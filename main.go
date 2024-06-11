@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/base64"
+	"io"
 	"log"
 	"os"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/h2non/bimg"
 )
 
 type Image struct {
@@ -14,7 +16,11 @@ type Image struct {
 }
 
 func main() {
-	app := fiber.New()
+	app := fiber.New(
+		fiber.Config{
+			BodyLimit: 1024 * 1024 * 1024,
+		},
+	)
 
 	app.Use(recover.New())
 
@@ -33,16 +39,54 @@ func main() {
 			log.Fatal(err)
 		}
 
-		file, err := os.Create("subject-001.jpeg")
+		// compress image
+		resizedImg, err := bimg.NewImage(imageBuff).Resize(200, 200)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		_, err = file.Write(imageBuff)
+		compressedImage, err := bimg.NewImage(resizedImg).Process(bimg.Options{
+			Quality: 40,
+		})
 		if err != nil {
 			log.Fatal(err)
 		}
 
+		file, err := os.Create("subject-004.jpeg")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+
+		_, err = file.Write(compressedImage)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return nil
+	})
+
+	app.Post("/convert/base64", func(ctx *fiber.Ctx) error {
+		imageFile, err := ctx.FormFile("image")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		file, err := imageFile.Open()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		imageBuff, err := io.ReadAll(file)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		base64Image := base64.StdEncoding.EncodeToString(imageBuff)
+
+		ctx.JSON(map[string]interface{}{
+			"image": base64Image,
+		}, "ok")
 		return nil
 	})
 
